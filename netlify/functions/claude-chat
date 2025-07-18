@@ -1,0 +1,200 @@
+const Anthropic = require('@anthropic-ai/sdk');
+
+const anthropic = new Anthropic({
+  apiKey: process.env.CLAUDE_API_KEY,
+});
+
+// HUD investment expertise context
+const SYSTEM_CONTEXT = `You are a Section 8 / HUD housing investment expert with access to real-time HUD data. Your expertise includes:
+
+CORE KNOWLEDGE:
+- Fair Market Rent (FMR) analysis and HUD payment standards
+- Section 8 voucher program mechanics and utilization rates  
+- Property qualification requirements and HUD inspections
+- Cash flow analysis for government-guaranteed rental income
+- Regional Center operations and voucher distribution
+- Investment strategies for recession-proof real estate
+- Risk assessment for HUD-backed properties
+
+COMMUNICATION STYLE:
+- Professional but approachable tone
+- Use specific data points and percentages when available
+- Provide actionable investment advice
+- Focus on ROI, cash flow, and risk mitigation
+- Reference government guarantees and stability advantages
+
+RESPONSE FORMAT:
+- Use emojis sparingly for key points (💰📊🏠)
+- Include specific numbers when discussing returns or premiums
+- Provide clear next steps for investment decisions
+- Mention compliance requirements when relevant
+
+Always prioritize accuracy and practical investment guidance.`;
+
+exports.handler = async (event, context) => {
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Content-Type': 'application/json'
+  };
+
+  if (event.httpMethod === 'OPTIONS') {
+    return { statusCode: 200, headers, body: '' };
+  }
+
+  if (event.httpMethod !== 'POST') {
+    return {
+      statusCode: 405,
+      headers,
+      body: JSON.stringify({ error: 'Method not allowed' })
+    };
+  }
+
+  try {
+    const { message, conversationHistory = [], currentMarketData = null } = JSON.parse(event.body);
+
+    if (!message || message.trim().length === 0) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ error: 'Message is required' })
+      };
+    }
+
+    // Build context-aware prompt
+    let contextualPrompt = SYSTEM_CONTEXT;
+    
+    // Add current market data context if available
+    if (currentMarketData) {
+      contextualPrompt += `
+
+CURRENT MARKET CONTEXT:
+Location: ${currentMarketData.city}, ${currentMarketData.state}
+2BR HUD Rate: $${currentMarketData.fmr_2br || 'N/A'}
+2BR Market Rate: $${currentMarketData.market_rent_2br || 'N/A'}
+Section 8 Premium: ${currentMarketData.premium || 'N/A'}%
+Voucher Utilization: ${currentMarketData.voucher_utilization || 'N/A'}%
+Average Wait Time: ${currentMarketData.avg_wait_time || 'N/A'} months
+
+Use this specific market data in your responses when relevant.`;
+    }
+
+    // Build conversation messages
+    const messages = [];
+    
+    // Add conversation history (last 5 messages to stay within token limits)
+    const recentHistory = conversationHistory.slice(-5);
+    recentHistory.forEach(msg => {
+      messages.push({
+        role: msg.role,
+        content: msg.content
+      });
+    });
+
+    // Add current user message
+    messages.push({
+      role: 'user',
+      content: message
+    });
+
+    // Get Claude response
+    const response = await anthropic.messages.create({
+      model: 'claude-3-5-sonnet-20241022',
+      max_tokens: 1000,
+      system: contextualPrompt,
+      messages: messages
+    });
+
+    const aiResponse = response.content[0].text;
+
+    // Log for analytics (in production, use proper logging service)
+    console.log(`Chat interaction: ${message.substring(0, 50)}... -> ${aiResponse.substring(0, 50)}...`);
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        reply: aiResponse,
+        timestamp: new Date().toISOString(),
+        tokensUsed: response.usage?.total_tokens || 0
+      })
+    };
+
+  } catch (error) {
+    console.error('Claude API Error:', error);
+    
+    // Handle specific error types
+    if (error.status === 429) {
+      return {
+        statusCode: 429,
+        headers,
+        body: JSON.stringify({ 
+          error: 'Rate limit exceeded. Please wait a moment and try again.',
+          retryAfter: 60
+        })
+      };
+    }
+    
+    if (error.status === 401) {
+      return {
+        statusCode: 500,
+        headers,
+        body: JSON.stringify({ 
+          error: 'API configuration error. Please contact support.'
+        })
+      };
+    }
+
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({ 
+        error: 'Unable to process your message at this time. Please try again.',
+        fallbackResponse: getFallbackResponse(message)
+      })
+    };
+  }
+};
+
+// Fallback responses for when Claude API is unavailable
+function getFallbackResponse(message) {
+  const lowerMessage = message.toLowerCase();
+  
+  if (lowerMessage.includes('roi') || lowerMessage.includes('return')) {
+    return `💰 Section 8 ROI typically ranges from 12-18% cash-on-cash returns due to:
+    
+• Government-guaranteed rent payments (100% reliability)
+• Premium rates above market rent (often 10-20% higher)
+• Higher occupancy rates (95% vs 85% market average)
+• Longer tenant stability (3-5 years vs 1-2 years)
+
+For detailed ROI calculations specific to your market, please try your question again in a moment.`;
+  }
+  
+  if (lowerMessage.includes('market') || lowerMessage.includes('best')) {
+    return `🏠 Strong Section 8 markets typically feature:
+    
+• HUD payment standards 10%+ above market rent
+• Voucher utilization rates above 90%
+• Wait times under 24 months
+• Stable local economies and good schools
+
+Top performing metros often include Atlanta, Tampa, Charlotte, and Phoenix. Try your question again for current market analysis.`;
+  }
+  
+  if (lowerMessage.includes('property') || lowerMessage.includes('criteria')) {
+    return `🎯 Ideal Section 8 properties should have:
+    
+• Move-in ready condition (HUD inspections required)
+• 2-4 bedrooms (highest voucher demand)
+• Safe neighborhoods with good transport access
+• Purchase price allowing positive cash flow at HUD rates
+
+Please try your question again for more detailed property analysis.`;
+  }
+  
+  return `I'm experiencing a temporary connection issue. Please try your question again in a moment. 
+  
+In the meantime, feel free to explore the market analysis tool above to get live HUD data for your area of interest.`;
+}
