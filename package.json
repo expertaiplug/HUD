@@ -1,31 +1,9 @@
 {
   "name": "hud-ai-pro",
   "version": "1.0.0",
-  "description": "Real-time Section 8 investment analysis platform with AI",
-  "main": "index.js",
-  "scripts": {
-    "build": "npm install",
-    "dev": "netlify dev",
-    "deploy": "netlify deploy --prod"
-  },
+  "description": "HUD Section 8 investment analysis with Claude AI",
+  "main": "hud-assistant.js",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.27.0",
-    "axios": "^1.6.0",
-    "cors": "^2.8.5",
-    "csv-parser": "^3.0.0",
-    "node-fetch": "^3.3.2"
-  },
-  "devDependencies": {
-    "netlify-cli": "^17.0.0"
-  },
-  "keywords": [
-    "hud",
-    "section8",
-    "real-estate",
-    "investment",
-    "ai",
-    "claude"
-  ],
-  "author": "Your Name",
-  "license": "MIT"
+    "@anthropic-ai/sdk": "^0.27.0"
+  }
 }
