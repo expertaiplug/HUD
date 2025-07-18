@@ -1,4 +1,5 @@
 const fetch = require('node-fetch');
+const { lookupZipCodeDirect } = require('./shared/zip-utils');
 // Real HUD API endpoints
 const HUD_ENDPOINTS = {
   fmr: 'https://www.huduser.gov/portal/datasets/fmr/fmrs/FY2024_4050/FY24_FMRs_rev.csv',
@@ -7,11 +8,14 @@ const HUD_ENDPOINTS = {
 };
 
 
-const zipData = await lookupZipCodeDirect(zipCode);
-
-    if (!response.ok) {
-      throw new Error('ZIP lookup failed');
-    }
+async function getZipToMSAData(zipCode) {
+  try {
+    return await lookupZipCodeDirect(zipCode);
+  } catch (error) {
+    console.error('ZIP to MSA lookup failed:', error);
+    return null;
+  }
+}
 
     const data = await response.json();
     return {
