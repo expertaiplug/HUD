@@ -411,108 +411,46 @@
         showEncouragement("Welcome! Start by entering a ZIP code to analyze live HUD data 🎯");
     });
 
-  // Updated market analysis function
-async function analyzeMarket() {
-    const zipCode = document.getElementById('zipCode').value.trim();
-    
-    if (!zipCode || zipCode.length !== 5 || !/^\d{5}$/.test(zipCode)) {
-        showError("Please enter a valid 5-digit ZIP code");
-        return;
-    }
-
-    const loadingDiv = document.getElementById('loading');
-    const resultsDiv = document.getElementById('marketResults');
-    const errorDiv = document.getElementById('errorMessage');
-    
-    loadingDiv.style.display = 'block';
-    resultsDiv.style.display = 'none';
-    errorDiv.style.display = 'none';
-
-    try {
+    // ===== UNIFIED API CALL FUNCTION =====
+    async function callHUDAssistant(action, data = {}) {
         const response = await fetch('/.netlify/functions/hud-assistant', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'analyze', zipCode })
+            body: JSON.stringify({ action, ...data })
         });
 
         if (!response.ok) {
             const errorData = await response.json();
-            throw new Error(errorData.error || 'API request failed');
+            throw new Error(errorData.error || `${action} request failed`);
         }
 
-        const marketData = await response.json();
-        const transformedData = transformMarketData(marketData);
-        displayMarketResults(transformedData);
-        currentMarketData = transformedData;
-        showEncouragement(`Excellent! ${marketData.city}, ${marketData.state} analysis complete! 💪`);
-        
-    } catch (error) {
-        console.error('Market analysis error:', error);
-        showError(error.message || "Error analyzing market. Please try again.");
-    } finally {
-        loadingDiv.style.display = 'none';
+        return await response.json();
     }
-}
 
-// Updated chat function
-async function sendChatMessage() {
-    const chatInput = document.getElementById('chatInput');
-    const message = chatInput.value.trim();
-    
-    if (!message) return;
-    
-    addChatMessage(message, 'user');
-    chatInput.value = '';
-    addChatMessage('🤔 Analyzing your question...', 'ai');
-    
-    try {
-        const response = await fetch('/.netlify/functions/hud-assistant', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'chat', message })
-        });
-
-        if (!response.ok) {
-            throw new Error('Chat request failed');
+    // ===== MARKET ANALYSIS FUNCTION =====
+    async function analyzeMarket() {
+        const zipCode = document.getElementById('zipCode').value.trim();
+        
+        if (!zipCode || zipCode.length !== 5 || !/^\d{5}$/.test(zipCode)) {
+            showError("Please enter a valid 5-digit ZIP code");
+            return;
         }
 
-        const data = await response.json();
+        const loadingDiv = document.getElementById('loading');
+        const resultsDiv = document.getElementById('marketResults');
+        const errorDiv = document.getElementById('errorMessage');
         
-        // Remove typing indicator
-        const messages = document.getElementById('chatMessages');
-        messages.removeChild(messages.lastChild);
-        
-        addChatMessage(data.reply, 'ai');
-        
-    } catch (error) {
-        console.error('Chat error:', error);
-        const messages = document.getElementById('chatMessages');
-        if (messages.lastChild) {
-            messages.removeChild(messages.lastChild);
-        }
-        addChatMessage('I\'m experiencing a connection issue. Please try again.', 'ai');
-    }
-}
+        loadingDiv.style.display = 'block';
+        resultsDiv.style.display = 'none';
+        errorDiv.style.display = 'none';
 
-// Updated market trends function
-async function loadLiveMarketTrends() {
-    try {
-        const response = await fetch('/.netlify/functions/hud-assistant', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'trends' })
-        });
-        
-        if (!response.ok) throw new Error('Failed to fetch trends');
-        
-        const data = await response.json();
-        displayMarketTrends(data.markets, data.insights);
-        
-    } catch (error) {
-        console.error('Failed to load market trends:', error);
-        loadStaticMarketTrends(); // Your existing fallback
-    }
-}
+        try {
+            const marketData = await callHUDAssistant('analyze', { zipCode });
+            const transformedData = transformMarketData(marketData);
+            displayMarketResults(transformedData);
+            currentMarketData = transformedData;
+            showEncouragement(`Excellent! ${marketData.city}, ${marketData.state} analysis complete! 💪`);
+            
         } catch (error) {
             console.error('Market analysis error:', error);
             showError(error.message || "Error analyzing market. Please try again.");
@@ -521,25 +459,85 @@ async function loadLiveMarketTrends() {
         }
     }
 
+    // ===== CHAT FUNCTION =====
+    async function sendChatMessage() {
+        const chatInput = document.getElementById('chatInput');
+        const message = chatInput.value.trim();
+        
+        if (!message) return;
+        
+        addChatMessage(message, 'user');
+        chatInput.value = '';
+        addChatMessage('🤔 Analyzing your question...', 'ai');
+        
+        try {
+            const data = await callHUDAssistant('chat', { 
+                message,
+                conversationHistory: chatHistory,
+                currentMarketData: currentMarketData
+            });
+            
+            // Remove typing indicator
+            const messages = document.getElementById('chatMessages');
+            messages.removeChild(messages.lastChild);
+            
+            addChatMessage(data.reply, 'ai');
+            
+            // Update chat history
+            chatHistory.push(
+                { role: 'user', content: message },
+                { role: 'assistant', content: data.reply }
+            );
+            
+            // Keep only last 10 messages for performance
+            if (chatHistory.length > 10) {
+                chatHistory = chatHistory.slice(-10);
+            }
+            
+        } catch (error) {
+            console.error('Chat error:', error);
+            const messages = document.getElementById('chatMessages');
+            if (messages.lastChild) {
+                messages.removeChild(messages.lastChild);
+            }
+            addChatMessage('I\'m experiencing a connection issue. Please try again.', 'ai');
+        }
+    }
+
+    // ===== MARKET TRENDS FUNCTION =====
+    async function loadLiveMarketTrends() {
+        try {
+            const data = await callHUDAssistant('trends');
+            displayMarketTrends(data.markets, data.insights);
+            
+        } catch (error) {
+            console.error('Failed to load market trends:', error);
+            loadStaticMarketTrends(); // Fallback to static data
+        }
+    }
+
+    // ===== UTILITY FUNCTIONS =====
+    
     // Transform API response to frontend format
     function transformMarketData(apiData) {
-        const analysis = apiData.analysis;
+        const analysis = apiData.analysis || {};
         const br2 = analysis['2br'] || {};
         const br3 = analysis['3br'] || {};
+        const overall = analysis.overall || {};
         
         return {
-            city: apiData.city,
-            state: apiData.state,
+            city: apiData.city || 'Unknown',
+            state: apiData.state || 'Unknown',
             zipCode: apiData.zipCode,
             fmr_2br: br2.fmrRate || 0,
             fmr_3br: br3.fmrRate || 0,
             market_rent_2br: br2.marketRate || 0,
             market_rent_3br: br3.marketRate || 0,
-            voucher_utilization: analysis.overall.voucherUtilization || 0,
-            avg_wait_time: analysis.overall.avgWaitTime || 0,
-            investment_score: analysis.overall.investmentScore || 0,
-            risk_level: analysis.overall.riskLevel || 'Unknown',
-            market_strength: analysis.overall.marketStrength || 'Unknown',
+            voucher_utilization: overall.voucherUtilization || 0,
+            avg_wait_time: overall.avgWaitTime || 0,
+            investment_score: overall.investmentScore || 0,
+            risk_level: overall.riskLevel || 'Unknown',
+            market_strength: overall.marketStrength || 'Unknown',
             dataSource: apiData.dataSource,
             lastUpdated: apiData.lastUpdated
         };
@@ -549,11 +547,14 @@ async function loadLiveMarketTrends() {
     function displayMarketResults(data) {
         const resultsDiv = document.getElementById('marketResults');
         
-        // Calculate key metrics
-        const premium2br = ((data.fmr_2br - data.market_rent_2br) / data.market_rent_2br * 100).toFixed(1);
-        const premium3br = ((data.fmr_3br - data.market_rent_3br) / data.market_rent_3br * 100).toFixed(1);
-        const monthlyPremium2br = data.fmr_2br - data.market_rent_2br;
-        const monthlyPremium3br = data.fmr_3br - data.market_rent_3br;
+        // Calculate key metrics with safety checks
+        const premium2br = data.market_rent_2br > 0 ? 
+            ((data.fmr_2br - data.market_rent_2br) / data.market_rent_2br * 100).toFixed(1) : '0.0';
+        const premium3br = data.market_rent_3br > 0 ? 
+            ((data.fmr_3br - data.market_rent_3br) / data.market_rent_3br * 100).toFixed(1) : '0.0';
+        
+        const monthlyPremium2br = Math.max(0, data.fmr_2br - data.market_rent_2br);
+        const monthlyPremium3br = Math.max(0, data.fmr_3br - data.market_rent_3br);
         const annualPremium2br = monthlyPremium2br * 12;
         const annualPremium3br = monthlyPremium3br * 12;
 
@@ -598,93 +599,6 @@ async function loadLiveMarketTrends() {
         resultsDiv.style.display = 'grid';
     }
 
-    // Chat functions - REAL CLAUDE API INTEGRATION
-    async function sendChatMessage() {
-        const chatInput = document.getElementById('chatInput');
-        const message = chatInput.value.trim();
-        
-        if (!message) return;
-        
-        // Add user message
-        addChatMessage(message, 'user');
-        chatInput.value = '';
-        
-        // Show typing indicator
-        addChatMessage('🤔 Analyzing your question...', 'ai');
-        
-        try {
-            // REAL API CALL to Claude via Netlify function
-            const response = await fetch('/.netlify/functions/claude-chat', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ 
-                    message,
-                    conversationHistory: chatHistory,
-                    currentMarketData: currentMarketData
-                })
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Chat API request failed');
-            }
-
-            const data = await response.json();
-            
-            // Remove typing indicator
-            const messages = document.getElementById('chatMessages');
-            messages.removeChild(messages.lastChild);
-            
-            // Add AI response
-            addChatMessage(data.reply, 'ai');
-            
-            // Update chat history
-            chatHistory.push(
-                { role: 'user', content: message },
-                { role: 'assistant', content: data.reply }
-            );
-            
-            // Keep only last 10 messages for performance
-            if (chatHistory.length > 10) {
-                chatHistory = chatHistory.slice(-10);
-            }
-            
-        } catch (error) {
-            console.error('Chat error:', error);
-            
-            // Remove typing indicator
-            const messages = document.getElementById('chatMessages');
-            if (messages.lastChild) {
-                messages.removeChild(messages.lastChild);
-            }
-            
-            // Show fallback response
-            addChatMessage('I\'m experiencing a temporary connection issue. Please try again in a moment, or explore the market analysis tool above for live HUD data.', 'ai');
-        }
-    }
-
-    // Load live market trends - REAL API INTEGRATION
-    async function loadLiveMarketTrends() {
-        try {
-            // REAL API CALL to market data function
-            const response = await fetch('/.netlify/functions/market-data?limit=5&sortBy=premium');
-            
-            if (!response.ok) {
-                throw new Error('Failed to fetch market data');
-            }
-            
-            const data = await response.json();
-            displayMarketTrends(data.markets, data.insights);
-            
-        } catch (error) {
-            console.error('Failed to load market trends:', error);
-            // Fall back to static data if API fails
-            loadStaticMarketTrends();
-        }
-    }
-
     // Display real market trends
     function displayMarketTrends(markets, insights) {
         const trendsDiv = document.getElementById('marketTrends');
@@ -700,38 +614,45 @@ async function loadLiveMarketTrends() {
             `;
         }
         
-        trendsHTML += markets.map(market => `
-            <div class="trend-item">
-                <div class="trend-location">
-                    ${market.city}, ${market.state}
-                    <div style="font-size: 0.8rem; color: #6b7280;">
-                        Score: ${market.investmentScore}/100 • ${market.momentum || 'moderate'} momentum
+        if (markets && markets.length > 0) {
+            trendsHTML += markets.map(market => `
+                <div class="trend-item">
+                    <div class="trend-location">
+                        ${market.city}, ${market.state}
+                        <div style="font-size: 0.8rem; color: #6b7280;">
+                            Score: ${market.investmentScore || 'N/A'}/100 • ${market.momentum || 'moderate'} momentum
+                        </div>
+                    </div>
+                    <div class="trend-data">
+                        <div class="trend-value">+${market.premium || '0.0'}%</div>
+                        <div class="trend-change">${market.utilization || '0'}% utilization</div>
                     </div>
                 </div>
-                <div class="trend-data">
-                    <div class="trend-value">+${market.premium}%</div>
-                    <div class="trend-change">${market.utilization}% utilization</div>
-                </div>
-            </div>
-        `).join('');
+            `).join('');
+        }
         
-        trendsDiv.innerHTML = trendsHTML;
+        trendsDiv.innerHTML = trendsHTML || '<p>Loading market trends...</p>';
     }
 
     // Fallback static trends
     function loadStaticMarketTrends() {
         const trendsDiv = document.getElementById('marketTrends');
         const staticData = [
-            { city: 'Atlanta', state: 'GA', premium: 15.4, utilization: 94 },
-            { city: 'Tampa', state: 'FL', premium: 15.0, utilization: 96 },
-            { city: 'Charlotte', state: 'NC', premium: 13.6, utilization: 92 },
-            { city: 'Houston', state: 'TX', premium: 13.0, utilization: 89 },
-            { city: 'Phoenix', state: 'AZ', premium: 12.5, utilization: 91 }
+            { city: 'Atlanta', state: 'GA', premium: 15.4, utilization: 94, investmentScore: 85 },
+            { city: 'Tampa', state: 'FL', premium: 15.0, utilization: 96, investmentScore: 82 },
+            { city: 'Charlotte', state: 'NC', premium: 13.6, utilization: 92, investmentScore: 78 },
+            { city: 'Houston', state: 'TX', premium: 13.0, utilization: 89, investmentScore: 75 },
+            { city: 'Phoenix', state: 'AZ', premium: 12.5, utilization: 91, investmentScore: 73 }
         ];
         
         trendsDiv.innerHTML = staticData.map(market => `
             <div class="trend-item">
-                <div class="trend-location">${market.city}, ${market.state}</div>
+                <div class="trend-location">
+                    ${market.city}, ${market.state}
+                    <div style="font-size: 0.8rem; color: #6b7280;">
+                        Score: ${market.investmentScore}/100 • moderate momentum
+                    </div>
+                </div>
                 <div class="trend-data">
                     <div class="trend-value">+${market.premium}%</div>
                     <div class="trend-change">${market.utilization}% utilization</div>
