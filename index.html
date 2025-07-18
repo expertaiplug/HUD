@@ -411,48 +411,108 @@
         showEncouragement("Welcome! Start by entering a ZIP code to analyze live HUD data 🎯");
     });
 
-    // Analyze market function - REAL API INTEGRATION
-    async function analyzeMarket() {
-        const zipCode = document.getElementById('zipCode').value.trim();
-        
-        if (!zipCode || zipCode.length !== 5 || !/^\d{5}$/.test(zipCode)) {
-            showError("Please enter a valid 5-digit ZIP code");
-            return;
+  // Updated market analysis function
+async function analyzeMarket() {
+    const zipCode = document.getElementById('zipCode').value.trim();
+    
+    if (!zipCode || zipCode.length !== 5 || !/^\d{5}$/.test(zipCode)) {
+        showError("Please enter a valid 5-digit ZIP code");
+        return;
+    }
+
+    const loadingDiv = document.getElementById('loading');
+    const resultsDiv = document.getElementById('marketResults');
+    const errorDiv = document.getElementById('errorMessage');
+    
+    loadingDiv.style.display = 'block';
+    resultsDiv.style.display = 'none';
+    errorDiv.style.display = 'none';
+
+    try {
+        const response = await fetch('/.netlify/functions/hud-assistant', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'analyze', zipCode })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'API request failed');
         }
 
-        const loadingDiv = document.getElementById('loading');
-        const resultsDiv = document.getElementById('marketResults');
-        const errorDiv = document.getElementById('errorMessage');
+        const marketData = await response.json();
+        const transformedData = transformMarketData(marketData);
+        displayMarketResults(transformedData);
+        currentMarketData = transformedData;
+        showEncouragement(`Excellent! ${marketData.city}, ${marketData.state} analysis complete! 💪`);
         
-        // Show loading
-        loadingDiv.style.display = 'block';
-        resultsDiv.style.display = 'none';
-        errorDiv.style.display = 'none';
+    } catch (error) {
+        console.error('Market analysis error:', error);
+        showError(error.message || "Error analyzing market. Please try again.");
+    } finally {
+        loadingDiv.style.display = 'none';
+    }
+}
 
-        try {
-            // REAL API CALL to your Netlify function
-            const response = await fetch('/.netlify/functions/hud-analysis', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ zipCode })
-            });
+// Updated chat function
+async function sendChatMessage() {
+    const chatInput = document.getElementById('chatInput');
+    const message = chatInput.value.trim();
+    
+    if (!message) return;
+    
+    addChatMessage(message, 'user');
+    chatInput.value = '';
+    addChatMessage('🤔 Analyzing your question...', 'ai');
+    
+    try {
+        const response = await fetch('/.netlify/functions/hud-assistant', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'chat', message })
+        });
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'API request failed');
-            }
+        if (!response.ok) {
+            throw new Error('Chat request failed');
+        }
 
-            const marketData = await response.json();
-            
-            // Transform API response to frontend format
-            const transformedData = transformMarketData(marketData);
-            
-            displayMarketResults(transformedData);
-            currentMarketData = transformedData;
-            showEncouragement(`Excellent! ${marketData.city}, ${marketData.state} shows ${marketData.analysis.overall.investmentScore >= 80 ? 'strong' : 'moderate'} Section 8 potential 💪`);
-            
+        const data = await response.json();
+        
+        // Remove typing indicator
+        const messages = document.getElementById('chatMessages');
+        messages.removeChild(messages.lastChild);
+        
+        addChatMessage(data.reply, 'ai');
+        
+    } catch (error) {
+        console.error('Chat error:', error);
+        const messages = document.getElementById('chatMessages');
+        if (messages.lastChild) {
+            messages.removeChild(messages.lastChild);
+        }
+        addChatMessage('I\'m experiencing a connection issue. Please try again.', 'ai');
+    }
+}
+
+// Updated market trends function
+async function loadLiveMarketTrends() {
+    try {
+        const response = await fetch('/.netlify/functions/hud-assistant', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'trends' })
+        });
+        
+        if (!response.ok) throw new Error('Failed to fetch trends');
+        
+        const data = await response.json();
+        displayMarketTrends(data.markets, data.insights);
+        
+    } catch (error) {
+        console.error('Failed to load market trends:', error);
+        loadStaticMarketTrends(); // Your existing fallback
+    }
+}
         } catch (error) {
             console.error('Market analysis error:', error);
             showError(error.message || "Error analyzing market. Please try again.");
