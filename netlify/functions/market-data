@@ -186,13 +186,9 @@ async function aggregateAllMarketData() {
   return aggregatedData;
 }
 
-const zipData = await lookupZipCodeDirect(zipCode);
-
-    if (!response.ok) {
-      throw new Error('ZIP lookup failed');
-    }
-
-    return await response.json();
+async function getZipToMSAData(zipCode) {
+  try {
+    return await lookupZipCodeDirect(zipCode);
   } catch (error) {
     console.error('ZIP to MSA lookup failed:', error);
     return null;
