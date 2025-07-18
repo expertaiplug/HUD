@@ -400,597 +400,332 @@
         <span id="encouragementText"></span>
     </div>
 
-    <script>
-        // Global variables
-        let currentMarketData = null;
-        let chatHistory = [];
+   // REPLACE THE ENTIRE SCRIPT SECTION IN YOUR index.html WITH THIS:
 
-        // HUD API endpoints and data sources
-        const HUD_DATA_SOURCES = {
-            paymentStandards: 'https://www.huduser.gov/portal/datasets/fmr/fmrs/FY2024_4050/FY24_FMRs_rev.csv',
-            affordableHousing: 'https://www.huduser.gov/portal/datasets/cp.html',
-            publicHousing: 'https://www.hud.gov/sites/documents/PIH-2019-23.PDF'
+<script>
+    // Global variables
+    let currentMarketData = null;
+    let chatHistory = [];
+
+    // Initialize the page
+    document.addEventListener('DOMContentLoaded', function() {
+        loadLiveMarketTrends();
+        showEncouragement("Welcome! Start by entering a ZIP code to analyze live HUD data 🎯");
+    });
+
+    // Analyze market function - REAL API INTEGRATION
+    async function analyzeMarket() {
+        const zipCode = document.getElementById('zipCode').value.trim();
+        
+        if (!zipCode || zipCode.length !== 5 || !/^\d{5}$/.test(zipCode)) {
+            showError("Please enter a valid 5-digit ZIP code");
+            return;
+        }
+
+        const loadingDiv = document.getElementById('loading');
+        const resultsDiv = document.getElementById('marketResults');
+        const errorDiv = document.getElementById('errorMessage');
+        
+        // Show loading
+        loadingDiv.style.display = 'block';
+        resultsDiv.style.display = 'none';
+        errorDiv.style.display = 'none';
+
+        try {
+            // REAL API CALL to your Netlify function
+            const response = await fetch('/.netlify/functions/hud-analysis', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ zipCode })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'API request failed');
+            }
+
+            const marketData = await response.json();
+            
+            // Transform API response to frontend format
+            const transformedData = transformMarketData(marketData);
+            
+            displayMarketResults(transformedData);
+            currentMarketData = transformedData;
+            showEncouragement(`Excellent! ${marketData.city}, ${marketData.state} shows ${marketData.analysis.overall.investmentScore >= 80 ? 'strong' : 'moderate'} Section 8 potential 💪`);
+            
+        } catch (error) {
+            console.error('Market analysis error:', error);
+            showError(error.message || "Error analyzing market. Please try again.");
+        } finally {
+            loadingDiv.style.display = 'none';
+        }
+    }
+
+    // Transform API response to frontend format
+    function transformMarketData(apiData) {
+        const analysis = apiData.analysis;
+        const br2 = analysis['2br'] || {};
+        const br3 = analysis['3br'] || {};
+        
+        return {
+            city: apiData.city,
+            state: apiData.state,
+            zipCode: apiData.zipCode,
+            fmr_2br: br2.fmrRate || 0,
+            fmr_3br: br3.fmrRate || 0,
+            market_rent_2br: br2.marketRate || 0,
+            market_rent_3br: br3.marketRate || 0,
+            voucher_utilization: analysis.overall.voucherUtilization || 0,
+            avg_wait_time: analysis.overall.avgWaitTime || 0,
+            investment_score: analysis.overall.investmentScore || 0,
+            risk_level: analysis.overall.riskLevel || 'Unknown',
+            market_strength: analysis.overall.marketStrength || 'Unknown',
+            dataSource: apiData.dataSource,
+            lastUpdated: apiData.lastUpdated
         };
+    }
 
-        // Real HUD payment standards data (sample for major metros)
-        const REAL_HUD_DATA = {
-            "30309": { // Atlanta
-                city: "Atlanta",
-                state: "GA",
-                fmr_1br: 1235,
-                fmr_2br: 1450,
-                fmr_3br: 1850,
-                fmr_4br: 2100,
-                market_rent_1br: 1100,
-                market_rent_2br: 1300,
-                market_rent_3br: 1650,
-                market_rent_4br: 1900,
-                voucher_utilization: 94,
-                avg_wait_time: 18
-            },
-            "33607": { // Tampa
-                city: "Tampa",
-                state: "FL",
-                fmr_1br: 1180,
-                fmr_2br: 1380,
-                fmr_3br: 1750,
-                fmr_4br: 2050,
-                market_rent_1br: 1050,
-                market_rent_2br: 1200,
-                market_rent_3br: 1550,
-                market_rent_4br: 1800,
-                voucher_utilization: 96,
-                avg_wait_time: 24
-            },
-            "28202": { // Charlotte
-                city: "Charlotte",
-                state: "NC",
-                fmr_1br: 1050,
-                fmr_2br: 1250,
-                fmr_3br: 1600,
-                fmr_4br: 1900,
-                market_rent_1br: 950,
-                market_rent_2br: 1100,
-                market_rent_3br: 1400,
-                market_rent_4br: 1650,
-                voucher_utilization: 92,
-                avg_wait_time: 12
-            },
-            "77001": { // Houston
-                city: "Houston",
-                state: "TX",
-                fmr_1br: 1100,
-                fmr_2br: 1300,
-                fmr_3br: 1650,
-                fmr_4br: 1950,
-                market_rent_1br: 1000,
-                market_rent_2br: 1150,
-                market_rent_3br: 1450,
-                market_rent_4br: 1750,
-                voucher_utilization: 89,
-                avg_wait_time: 15
-            },
-            "85001": { // Phoenix
-                city: "Phoenix",
-                state: "AZ",
-                fmr_1br: 1150,
-                fmr_2br: 1350,
-                fmr_3br: 1700,
-                fmr_4br: 2000,
-                market_rent_1br: 1050,
-                market_rent_2br: 1200,
-                market_rent_3br: 1500,
-                market_rent_4br: 1800,
-                voucher_utilization: 91,
-                avg_wait_time: 21
-            }
-        };
+    // Display market results
+    function displayMarketResults(data) {
+        const resultsDiv = document.getElementById('marketResults');
+        
+        // Calculate key metrics
+        const premium2br = ((data.fmr_2br - data.market_rent_2br) / data.market_rent_2br * 100).toFixed(1);
+        const premium3br = ((data.fmr_3br - data.market_rent_3br) / data.market_rent_3br * 100).toFixed(1);
+        const monthlyPremium2br = data.fmr_2br - data.market_rent_2br;
+        const monthlyPremium3br = data.fmr_3br - data.market_rent_3br;
+        const annualPremium2br = monthlyPremium2br * 12;
+        const annualPremium3br = monthlyPremium3br * 12;
 
-        // Initialize the page
-        document.addEventListener('DOMContentLoaded', function() {
-            loadLiveMarketTrends();
-            showEncouragement("Welcome! Start by entering a ZIP code to analyze live HUD data 🎯");
-        });
-
-        // Analyze market function
-        async function analyzeMarket() {
-            const zipCode = document.getElementById('zipCode').value.trim();
+        resultsDiv.innerHTML = `
+            <div class="result-card">
+                <div class="result-title">Market Location</div>
+                <div class="result-value">${data.city}, ${data.state}</div>
+                <div class="result-description">HUD Fair Market Rent Area</div>
+            </div>
             
-            if (!zipCode || zipCode.length !== 5 || !/^\d{5}$/.test(zipCode)) {
-                showError("Please enter a valid 5-digit ZIP code");
-                return;
-            }
-
-            const loadingDiv = document.getElementById('loading');
-            const resultsDiv = document.getElementById('marketResults');
-            const errorDiv = document.getElementById('errorMessage');
+            <div class="result-card">
+                <div class="result-title">2BR Section 8 Premium</div>
+                <div class="result-value">+${premium2br}%</div>
+                <div class="result-description">$${monthlyPremium2br}/month ($${annualPremium2br}/year) above market</div>
+            </div>
             
-            // Show loading
-            loadingDiv.style.display = 'block';
-            resultsDiv.style.display = 'none';
-            errorDiv.style.display = 'none';
+            <div class="result-card">
+                <div class="result-title">3BR Section 8 Premium</div>
+                <div class="result-value">+${premium3br}%</div>
+                <div class="result-description">$${monthlyPremium3br}/month ($${annualPremium3br}/year) above market</div>
+            </div>
+            
+            <div class="result-card">
+                <div class="result-title">Voucher Utilization</div>
+                <div class="result-value">${data.voucher_utilization}%</div>
+                <div class="result-description">High demand indicates strong rental market</div>
+            </div>
+            
+            <div class="result-card">
+                <div class="result-title">Average Wait Time</div>
+                <div class="result-value">${data.avg_wait_time} months</div>
+                <div class="result-description">Time tenants wait for Section 8 approval</div>
+            </div>
+            
+            <div class="result-card">
+                <div class="result-title">Investment Score</div>
+                <div class="result-value">${data.investment_score}/100</div>
+                <div class="result-description">Based on premiums, utilization, and demand</div>
+            </div>
+        `;
+        
+        resultsDiv.style.display = 'grid';
+    }
 
-            try {
-                // Simulate API call delay
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                
-                // Get real market data
-                const marketData = await getMarketData(zipCode);
-                
-                if (marketData) {
-                    displayMarketResults(marketData);
-                    currentMarketData = marketData;
-                    showEncouragement(`Great choice! ${marketData.city} shows strong Section 8 potential 💪`);
-                } else {
-                    showError("Unable to find HUD data for this ZIP code. Try a major metro area like 30309 (Atlanta), 33607 (Tampa), or 28202 (Charlotte).");
-                }
-            } catch (error) {
-                showError("Error analyzing market. Please try again.");
-            } finally {
-                loadingDiv.style.display = 'none';
+    // Chat functions - REAL CLAUDE API INTEGRATION
+    async function sendChatMessage() {
+        const chatInput = document.getElementById('chatInput');
+        const message = chatInput.value.trim();
+        
+        if (!message) return;
+        
+        // Add user message
+        addChatMessage(message, 'user');
+        chatInput.value = '';
+        
+        // Show typing indicator
+        addChatMessage('🤔 Analyzing your question...', 'ai');
+        
+        try {
+            // REAL API CALL to Claude via Netlify function
+            const response = await fetch('/.netlify/functions/claude-chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ 
+                    message,
+                    conversationHistory: chatHistory,
+                    currentMarketData: currentMarketData
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Chat API request failed');
             }
+
+            const data = await response.json();
+            
+            // Remove typing indicator
+            const messages = document.getElementById('chatMessages');
+            messages.removeChild(messages.lastChild);
+            
+            // Add AI response
+            addChatMessage(data.reply, 'ai');
+            
+            // Update chat history
+            chatHistory.push(
+                { role: 'user', content: message },
+                { role: 'assistant', content: data.reply }
+            );
+            
+            // Keep only last 10 messages for performance
+            if (chatHistory.length > 10) {
+                chatHistory = chatHistory.slice(-10);
+            }
+            
+        } catch (error) {
+            console.error('Chat error:', error);
+            
+            // Remove typing indicator
+            const messages = document.getElementById('chatMessages');
+            if (messages.lastChild) {
+                messages.removeChild(messages.lastChild);
+            }
+            
+            // Show fallback response
+            addChatMessage('I\'m experiencing a temporary connection issue. Please try again in a moment, or explore the market analysis tool above for live HUD data.', 'ai');
         }
+    }
 
-        // Get market data (real HUD data)
-        async function getMarketData(zipCode) {
-            // Check if we have real data for this ZIP
-            if (REAL_HUD_DATA[zipCode]) {
-                return REAL_HUD_DATA[zipCode];
+    // Load live market trends - REAL API INTEGRATION
+    async function loadLiveMarketTrends() {
+        try {
+            // REAL API CALL to market data function
+            const response = await fetch('/.netlify/functions/market-data?limit=5&sortBy=premium');
+            
+            if (!response.ok) {
+                throw new Error('Failed to fetch market data');
             }
             
-            // For other ZIP codes, attempt to get data from HUD APIs
-            // This would normally call real HUD APIs
-            try {
-                // Simulate API response with realistic data
-                const response = await simulateHUDAPI(zipCode);
-                return response;
-            } catch (error) {
-                return null;
-            }
-        }
-
-        // Simulate HUD API response
-        async function simulateHUDAPI(zipCode) {
-            // This would normally be a real API call
-            // For now, return null for unknown ZIP codes
-            return null;
-        }
-
-        // Display market results
-        function displayMarketResults(data) {
-            const resultsDiv = document.getElementById('marketResults');
+            const data = await response.json();
+            displayMarketTrends(data.markets, data.insights);
             
-            // Calculate key metrics
-            const premium2br = ((data.fmr_2br - data.market_rent_2br) / data.market_rent_2br * 100).toFixed(1);
-            const premium3br = ((data.fmr_3br - data.market_rent_3br) / data.market_rent_3br * 100).toFixed(1);
-            const monthlyPremium2br = data.fmr_2br - data.market_rent_2br;
-            const monthlyPremium3br = data.fmr_3br - data.market_rent_3br;
-            const annualPremium2br = monthlyPremium2br * 12;
-            const annualPremium3br = monthlyPremium3br * 12;
+        } catch (error) {
+            console.error('Failed to load market trends:', error);
+            // Fall back to static data if API fails
+            loadStaticMarketTrends();
+        }
+    }
 
-            resultsDiv.innerHTML = `
-                <div class="result-card">
-                    <div class="result-title">Market Location</div>
-                    <div class="result-value">${data.city}, ${data.state}</div>
-                    <div class="result-description">HUD Fair Market Rent Area</div>
-                </div>
-                
-                <div class="result-card">
-                    <div class="result-title">2BR Section 8 Premium</div>
-                    <div class="result-value">+${premium2br}%</div>
-                    <div class="result-description">$${monthlyPremium2br}/month ($${annualPremium2br}/year) above market</div>
-                </div>
-                
-                <div class="result-card">
-                    <div class="result-title">3BR Section 8 Premium</div>
-                    <div class="result-value">+${premium3br}%</div>
-                    <div class="result-description">$${monthlyPremium3br}/month ($${annualPremium3br}/year) above market</div>
-                </div>
-                
-                <div class="result-card">
-                    <div class="result-title">Voucher Utilization</div>
-                    <div class="result-value">${data.voucher_utilization}%</div>
-                    <div class="result-description">High demand indicates strong rental market</div>
-                </div>
-                
-                <div class="result-card">
-                    <div class="result-title">Average Wait Time</div>
-                    <div class="result-value">${data.avg_wait_time} months</div>
-                    <div class="result-description">Time tenants wait for Section 8 approval</div>
-                </div>
-                
-                <div class="result-card">
-                    <div class="result-title">Investment Score</div>
-                    <div class="result-value">${calculateInvestmentScore(data)}/100</div>
-                    <div class="result-description">Based on premiums, utilization, and demand</div>
+    // Display real market trends
+    function displayMarketTrends(markets, insights) {
+        const trendsDiv = document.getElementById('marketTrends');
+        
+        let trendsHTML = '';
+        
+        if (insights && insights.topPerformer) {
+            trendsHTML += `
+                <div style="background: linear-gradient(135deg, var(--hud-green), var(--hud-blue)); color: white; padding: 1rem; border-radius: 10px; margin-bottom: 1rem; text-align: center;">
+                    🏆 <strong>Top Performer:</strong> ${insights.topPerformer.city}, ${insights.topPerformer.state} 
+                    (+${insights.topPerformer.premium}% premium)
                 </div>
             `;
-            
-            resultsDiv.style.display = 'grid';
         }
-
-        // Calculate investment score
-        function calculateInvestmentScore(data) {
-            const premium2br = ((data.fmr_2br - data.market_rent_2br) / data.market_rent_2br * 100);
-            const premium3br = ((data.fmr_3br - data.market_rent_3br) / data.market_rent_3br * 100);
-            const avgPremium = (premium2br + premium3br) / 2;
-            
-            let score = 0;
-            
-            // Premium scoring (0-40 points)
-            if (avgPremium >= 15) score += 40;
-            else if (avgPremium >= 10) score += 30;
-            else if (avgPremium >= 5) score += 20;
-            else score += 10;
-            
-            // Utilization scoring (0-30 points)
-            if (data.voucher_utilization >= 95) score += 30;
-            else if (data.voucher_utilization >= 90) score += 25;
-            else if (data.voucher_utilization >= 85) score += 20;
-            else score += 10;
-            
-            // Wait time scoring (0-30 points) - shorter wait is better
-            if (data.avg_wait_time <= 12) score += 30;
-            else if (data.avg_wait_time <= 18) score += 25;
-            else if (data.avg_wait_time <= 24) score += 20;
-            else score += 15;
-            
-            return Math.min(100, score);
-        }
-
-        // Chat functions
-        async function sendChatMessage() {
-            const chatInput = document.getElementById('chatInput');
-            const message = chatInput.value.trim();
-            
-            if (!message) return;
-            
-            // Add user message
-            addChatMessage(message, 'user');
-            chatInput.value = '';
-            
-            // Show typing indicator
-            addChatMessage('🤔 Analyzing your question...', 'ai');
-            
-            try {
-                // Get AI response
-                const response = await getChatResponse(message);
-                
-                // Remove typing indicator
-                const messages = document.getElementById('chatMessages');
-                messages.removeChild(messages.lastChild);
-                
-                // Add AI response
-                addChatMessage(response, 'ai');
-                
-            } catch (error) {
-                // Remove typing indicator
-                const messages = document.getElementById('chatMessages');
-                messages.removeChild(messages.lastChild);
-                
-                addChatMessage('Sorry, I encountered an error. Please try again.', 'ai');
-            }
-        }
-
-        // Get AI response (would normally call Claude API)
-        async function getChatResponse(message) {
-            // Simulate API delay
-            await new Promise(resolve => setTimeout(resolve, 1500));
-            
-            const lowerMessage = message.toLowerCase();
-            
-            // Context-aware responses based on current data
-            if (lowerMessage.includes('best markets') || lowerMessage.includes('top markets')) {
-                return `Based on live HUD data, the strongest Section 8 markets right now are:
-
-🏆 **Atlanta, GA** - 15.4% premium over market rent
-🥈 **Tampa, FL** - 15.0% premium over market rent  
-🥉 **Charlotte, NC** - 13.6% premium over market rent
-
-These markets offer guaranteed government payments above market rates with 90%+ voucher utilization.`;
-            }
-            
-            if (lowerMessage.includes('roi') || lowerMessage.includes('return') || lowerMessage.includes('calculate')) {
-                return `Here's how to calculate Section 8 ROI:
-
-💰 **Cash Flow Analysis:**
-• HUD Payment Standard (guaranteed rent)
-• Minus: Property expenses, taxes, insurance
-• Equals: Net monthly cash flow
-
-📊 **ROI Formula:**
-• Annual Cash Flow ÷ Total Investment × 100
-• Section 8 typically yields 12-18% cash-on-cash returns
-
-🎯 **Key Advantage:** 95%+ occupancy vs 85% market average means significantly higher annual income!`;
-            }
-            
-            if (lowerMessage.includes('property') || lowerMessage.includes('look for')) {
-                return `🏠 **Ideal Section 8 Properties:**
-
-✅ **Location:** Stable neighborhoods with good schools and transport
-✅ **Condition:** Move-in ready (HUD inspections required)
-✅ **Size:** 2-4 bedrooms (highest demand)
-✅ **Price:** Where HUD rate > market rent by 10%+
-
-🔍 **Red Flags to Avoid:**
-❌ High-crime areas
-❌ Properties needing major repairs
-❌ Markets with declining HUD rates
-❌ Areas with long inspection delays`;
-            }
-            
-            if (currentMarketData && (lowerMessage.includes('this market') || lowerMessage.includes(currentMarketData.city.toLowerCase()))) {
-                const premium = ((currentMarketData.fmr_2br - currentMarketData.market_rent_2br) / currentMarketData.market_rent_2br * 100).toFixed(1);
-                return `📍 **${currentMarketData.city}, ${currentMarketData.state} Analysis:**
-
-💰 **Section 8 Premium:** +${premium}% above market
-🏠 **2BR HUD Rate:** $${currentMarketData.fmr_2br}/month
-📊 **Voucher Utilization:** ${currentMarketData.voucher_utilization}%
-⏱️ **Avg Wait Time:** ${currentMarketData.avg_wait_time} months
-
-This market shows ${premium > 12 ? 'excellent' : premium > 8 ? 'good' : 'moderate'} Section 8 investment potential!`;
-            }
-            
-            // Default response
-            return `I can help you analyze Section 8 investments! I have access to live HUD data and can provide:
-
-📊 Real-time payment standards
-🏠 Property investment analysis  
-📈 Market comparisons
-💰 ROI calculations
-🎯 Investment strategies
-
-What specific aspect of Section 8 investing would you like to explore?`;
-        }
-
-        // Handle chat key press
-        function handleChatKeyPress(event) {
-            if (event.key === 'Enter') {
-                sendChatMessage();
-            }
-        }
-
-        // Add chat message
-        function addChatMessage(message, sender) {
-            const messages = document.getElementById('chatMessages');
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${sender}`;
-            messageDiv.innerHTML = message;
-            messages.appendChild(messageDiv);
-            messages.scrollTop = messages.scrollHeight;
-        }
-
-        // Load live market trends
-        function loadLiveMarketTrends() {
-            const trendsDiv = document.getElementById('marketTrends');
-            
-            // Get top markets from our data
-            const topMarkets = Object.entries(REAL_HUD_DATA)
-                .map(([zip, data]) => ({
-                    ...data,
-                    zip,
-                    premium: ((data.fmr_2br - data.market_rent_2br) / data.market_rent_2br * 100).toFixed(1)
-                }))
-                .sort((a, b) => b.premium - a.premium);
-            
-            trendsDiv.innerHTML = topMarkets.map(market => `
-                <div class="trend-item">
-                    <div class="trend-location">${market.city}, ${market.state}</div>
-                    <div class="trend-data">
-                        <div class="trend-value">+${market.premium}%</div>
-                        <div class="trend-change">${market.voucher_utilization}% utilization</div>
+        
+        trendsHTML += markets.map(market => `
+            <div class="trend-item">
+                <div class="trend-location">
+                    ${market.city}, ${market.state}
+                    <div style="font-size: 0.8rem; color: #6b7280;">
+                        Score: ${market.investmentScore}/100 • ${market.momentum || 'moderate'} momentum
                     </div>
                 </div>
-            `).join('');
+                <div class="trend-data">
+                    <div class="trend-value">+${market.premium}%</div>
+                    <div class="trend-change">${market.utilization}% utilization</div>
+                </div>
+            </div>
+        `).join('');
+        
+        trendsDiv.innerHTML = trendsHTML;
+    }
+
+    // Fallback static trends
+    function loadStaticMarketTrends() {
+        const trendsDiv = document.getElementById('marketTrends');
+        const staticData = [
+            { city: 'Atlanta', state: 'GA', premium: 15.4, utilization: 94 },
+            { city: 'Tampa', state: 'FL', premium: 15.0, utilization: 96 },
+            { city: 'Charlotte', state: 'NC', premium: 13.6, utilization: 92 },
+            { city: 'Houston', state: 'TX', premium: 13.0, utilization: 89 },
+            { city: 'Phoenix', state: 'AZ', premium: 12.5, utilization: 91 }
+        ];
+        
+        trendsDiv.innerHTML = staticData.map(market => `
+            <div class="trend-item">
+                <div class="trend-location">${market.city}, ${market.state}</div>
+                <div class="trend-data">
+                    <div class="trend-value">+${market.premium}%</div>
+                    <div class="trend-change">${market.utilization}% utilization</div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // Handle chat key press
+    function handleChatKeyPress(event) {
+        if (event.key === 'Enter') {
+            sendChatMessage();
         }
+    }
 
-        // Show encouragement popup
-        function showEncouragement(message) {
-            const popup = document.getElementById('encouragementPopup');
-            const text = document.getElementById('encouragementText');
-            
-            text.textContent = message;
-            popup.classList.add('show');
-            
-            setTimeout(() => {
-                popup.classList.remove('show');
-            }, 5000);
-        }
-// Show error message
-function showError(message) {
-   const errorDiv = document.getElementById('errorMessage');
-   errorDiv.textContent = message;
-   errorDiv.style.display = 'block';
-   
-   setTimeout(() => {
-       errorDiv.style.display = 'none';
-   }, 5000);
-}
+    // Add chat message
+    function addChatMessage(message, sender) {
+        const messages = document.getElementById('chatMessages');
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${sender}`;
+        messageDiv.innerHTML = message;
+        messages.appendChild(messageDiv);
+        messages.scrollTop = messages.scrollHeight;
+    }
 
-// Additional utility functions
-function formatCurrency(amount) {
-   return new Intl.NumberFormat('en-US', {
-       style: 'currency',
-       currency: 'USD'
-   }).format(amount);
-}
+    // Show encouragement popup
+    function showEncouragement(message) {
+        const popup = document.getElementById('encouragementPopup');
+        const text = document.getElementById('encouragementText');
+        
+        text.textContent = message;
+        popup.classList.add('show');
+        
+        setTimeout(() => {
+            popup.classList.remove('show');
+        }, 5000);
+    }
 
-function calculateMonthlyROI(hudRate, marketRate, purchasePrice, downPayment) {
-   const monthlyPremium = hudRate - marketRate;
-   const annualPremium = monthlyPremium * 12;
-   const cashInvested = downPayment;
-   return (annualPremium / cashInvested * 100).toFixed(2);
-}
+    // Show error message
+    function showError(message) {
+        const errorDiv = document.getElementById('errorMessage');
+        errorDiv.textContent = message;
+        errorDiv.style.display = 'block';
+        
+        setTimeout(() => {
+            errorDiv.style.display = 'none';
+        }, 5000);
+    }
 
-// Real HUD API integration functions (for production)
-async function fetchRealHUDData(zipCode) {
-   // This would integrate with actual HUD APIs
-   const endpoints = {
-       fmr: `https://www.huduser.gov/portal/datasets/fmr.html`,
-       vouchers: `https://www.hud.gov/program_offices/public_indian_housing/systems/pic/50058/`,
-       properties: `https://www.huduser.gov/portal/datasets/cp.html`
-   };
-   
-   // Implementation would go here for real API calls
-   // Return formatted data matching our schema
-}
-
-// Property analysis calculator
-function calculatePropertyAnalysis(hudRate, marketRate, purchasePrice, downPayment, monthlyExpenses) {
-   const monthlyIncome = hudRate;
-   const netCashFlow = monthlyIncome - monthlyExpenses;
-   const annualCashFlow = netCashFlow * 12;
-   const cashOnCashReturn = (annualCashFlow / downPayment * 100).toFixed(2);
-   const premiumOverMarket = ((hudRate - marketRate) / marketRate * 100).toFixed(1);
-   
-   return {
-       monthlyIncome,
-       netCashFlow,
-       annualCashFlow,
-       cashOnCashReturn,
-       premiumOverMarket
-   };
-}
-
-// Advanced market scoring algorithm
-function calculateAdvancedMarketScore(data) {
-   let score = 0;
-   const weights = {
-       premium: 0.4,
-       utilization: 0.3,
-       waitTime: 0.2,
-       stability: 0.1
-   };
-   
-   // Premium scoring (0-100)
-   const avgPremium = ((data.fmr_2br - data.market_rent_2br) / data.market_rent_2br * 100);
-   let premiumScore = Math.min(100, avgPremium * 5);
-   
-   // Utilization scoring (0-100)
-   let utilizationScore = data.voucher_utilization;
-   
-   // Wait time scoring (0-100) - inverse relationship
-   let waitTimeScore = Math.max(0, 100 - (data.avg_wait_time * 2));
-   
-   // Stability score (based on market characteristics)
-   let stabilityScore = 80; // Default high stability for government-backed program
-   
-   score = (premiumScore * weights.premium) + 
-           (utilizationScore * weights.utilization) + 
-           (waitTimeScore * weights.waitTime) + 
-           (stabilityScore * weights.stability);
-   
-   return Math.round(score);
-}
-
-// Export functionality for analysis results
-function exportAnalysis() {
-   if (!currentMarketData) {
-       showError('No market data to export. Please analyze a market first.');
-       return;
-   }
-   
-   const exportData = {
-       analysisDate: new Date().toISOString(),
-       marketData: currentMarketData,
-       calculations: calculatePropertyAnalysis(
-           currentMarketData.fmr_2br,
-           currentMarketData.market_rent_2br,
-           200000, // Example purchase price
-           40000,  // Example down payment
-           1500    // Example monthly expenses
-       )
-   };
-   
-   // Create downloadable JSON file
-   const dataStr = JSON.stringify(exportData, null, 2);
-   const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-   
-   const exportFileDefaultName = `hud-analysis-${currentMarketData.city}-${new Date().toISOString().split('T')[0]}.json`;
-   
-   const linkElement = document.createElement('a');
-   linkElement.setAttribute('href', dataUri);
-   linkElement.setAttribute('download', exportFileDefaultName);
-   linkElement.click();
-   
-   showEncouragement('Analysis exported successfully! 📊');
-}
-
-// Initialize real-time data updates
-setInterval(() => {
-   // Refresh market data every 5 minutes in production
-   loadLiveMarketTrends();
-}, 300000);
-
-// Performance monitoring
-function trackUserEngagement() {
-   // Track user interactions for analytics
-   const events = {
-       marketAnalysis: 0,
-       chatMessages: 0,
-       dataExports: 0
-   };
-   
-   // This would integrate with analytics platforms
-   console.log('User engagement tracking initialized');
-}
-
-// Initialize performance tracking
-document.addEventListener('DOMContentLoaded', function() {
-   trackUserEngagement();
-});
-
-// Keyboard shortcuts
-document.addEventListener('keydown', function(event) {
-   // Ctrl/Cmd + Enter to analyze market
-   if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-       const zipInput = document.getElementById('zipCode');
-       if (zipInput.value.trim()) {
-           analyzeMarket();
-       }
-   }
-   
-   // Escape to clear current analysis
-   if (event.key === 'Escape') {
-       document.getElementById('marketResults').style.display = 'none';
-       document.getElementById('errorMessage').style.display = 'none';
-       document.getElementById('zipCode').value = '';
-   }
-});
-
-// Auto-save user preferences
-function saveUserPreferences() {
-   const preferences = {
-       lastAnalyzedZip: document.getElementById('zipCode').value,
-       chatHistory: chatHistory.slice(-10), // Keep last 10 messages
-       timestamp: new Date().toISOString()
-   };
-   
-   // Note: Would use secure storage in production, not localStorage
-   // localStorage.setItem('hudAiPreferences', JSON.stringify(preferences));
-}
-
-// Load user preferences
-function loadUserPreferences() {
-   // Note: Would use secure storage in production
-   // const saved = localStorage.getItem('hudAiPreferences');
-   // if (saved) {
-   //     const preferences = JSON.parse(saved);
-   //     document.getElementById('zipCode').value = preferences.lastAnalyzedZip || '';
-   // }
-}
-
-// Contact form submission (if needed)
-function submitContactForm() {
-   showEncouragement('Thanks for your interest! We\'ll be in touch soon. 📞');
-}
-
-// Final initialization
-console.log('HUD AI Pro platform initialized successfully! 🚀');
-console.log('Platform features: Live HUD data, AI chat, market analysis, real-time trends');
-console.log('Ready for Section 8 investment analysis!');
-
-   </script>
+    console.log('HUD AI Pro platform initialized successfully! 🚀');
+    console.log('Platform features: Live HUD data, AI chat, market analysis, real-time trends');
+    console.log('Ready for Section 8 investment analysis!');
+</script>
 </body>
 </html>
