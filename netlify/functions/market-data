@@ -186,14 +186,7 @@ async function aggregateAllMarketData() {
   return aggregatedData;
 }
 
-// Get ZIP to MSA data using universal lookup
-async function getZipToMSAData(zipCode) {
-  try {
-    const response = await fetch(`/.netlify/functions/zip-lookup`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ zipCode })
-    });
+const zipData = await lookupZipCodeDirect(zipCode);
 
     if (!response.ok) {
       throw new Error('ZIP lookup failed');
