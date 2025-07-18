@@ -1,6 +1,4 @@
 const fetch = require('node-fetch');
-const csv = require('csv-parser');
-
 // Real HUD API endpoints
 const HUD_ENDPOINTS = {
   fmr: 'https://www.huduser.gov/portal/datasets/fmr/fmrs/FY2024_4050/FY24_FMRs_rev.csv',
@@ -8,14 +6,8 @@ const HUD_ENDPOINTS = {
   waitlists: 'https://www.huduser.gov/portal/datasets/cp.html'
 };
 
-// Dynamic ZIP-to-MSA lookup using the universal lookup service
-async function getZipToMSAData(zipCode) {
-  try {
-    const response = await fetch(`/.netlify/functions/zip-lookup`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ zipCode })
-    });
+
+const zipData = await lookupZipCodeDirect(zipCode);
 
     if (!response.ok) {
       throw new Error('ZIP lookup failed');
