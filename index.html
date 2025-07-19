@@ -631,20 +631,6 @@
             `).join('');
         }
         
-        trendsDiv.innerHTML = trendsHTML || '<p>Loading market trends...</p>';
-    }
-
-    // Fallback static trends
-    function loadStaticMarketTrends() {
-        const trendsDiv = document.getElementById('marketTrends');
-        const staticData = [
-            { city: 'Atlanta', state: 'GA', premium: 15.4, utilization: 94, investmentScore: 85 },
-            { city: 'Tampa', state: 'FL', premium: 15.0, utilization: 96, investmentScore: 82 },
-            { city: 'Charlotte', state: 'NC', premium: 13.6, utilization: 92, investmentScore: 78 },
-            { city: 'Houston', state: 'TX', premium: 13.0, utilization: 89, investmentScore: 75 },
-            { city: 'Phoenix', state: 'AZ', premium: 12.5, utilization: 91, investmentScore: 73 }
-        ];
-        
         trendsDiv.innerHTML = staticData.map(market => `
             <div class="trend-item">
                 <div class="trend-location">
